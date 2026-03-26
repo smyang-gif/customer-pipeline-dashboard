@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서치라이트AI — 고객 파이프라인</title>
+    <style>
+        :root {
+            --bg: #f4f5f7;
+            --card: #ffffff;
+            --header: #1a1a2e;
+            --text: #212529;
+            --muted: #6c757d;
+            --green: #22c55e;
+            --yellow: #eab308;
+            --red: #ef4444;
+            --blue: #3b82f6;
+            --gap: 14px;
+            --radius: 8px;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .wrap { max-width: 1200px; margin: 0 auto; padding: var(--gap); }
+
+        /* Header */
+        .header { background: var(--header); color: #fff; padding: 18px 24px; border-radius: var(--radius); margin-bottom: var(--gap); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+        .header h1 { font-size: 18px; font-weight: 600; }
+        .header .sub { font-size: 12px; color: rgba(255,255,255,.55); }
+        .header-right { display: flex; gap: 8px; align-items: center; }
+        .btn { padding: 6px 14px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; font-weight: 500; }
+        .btn-refresh { background: var(--green); color: #fff; }
+        .btn-export { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.2); }
+        .btn:hover { opacity: .85; }
+
+        /* KPI */
+        .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); margin-bottom: var(--gap); }
+        .kpi { background: var(--card); border-radius: var(--radius); padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+        .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px; }
+        .kpi-val { font-size: 26px; font-weight: 700; }
+        .kpi-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+        /* Controls */
+        .controls { display: flex; gap: 10px; margin-bottom: var(--gap); flex-wrap: wrap; align-items: center; }
+        .search { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+        .search:focus { outline: none; border-color: var(--blue); }
+        select.filter { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: #fff; }
+
+        /* Table */
+        .table-wrap { background: var(--card); border-radius: var(--radius); box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead th { text-align: left; padding: 10px 14px; border-bottom: 2px solid #e5e7eb; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; cursor: pointer; user-select: none; white-space: nowrap; }
+        thead th:hover { color: var(--text); background: #f9fafb; }
+        tbody td { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; }
+        tbody tr:hover { background: #f8fafc; }
+        tbody tr:last-child td { border-bottom: none; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+        .badge-green { background: #dcfce7; color: #166534; }
+        .badge-yellow { background: #fef9c3; color: #854d0e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .days { font-weight: 600; font-size: 12px; }
+
+        /* Editable */
+        td[contenteditable="true"] { cursor: text; }
+        td[contenteditable="true"]:focus { outline: 2px solid var(--blue); outline-offset: -2px; border-radius: 3px; background: #eff6ff; }
+
+        /* Toast */
+        .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1a1a2e; color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 13px; z-index: 200; display: none; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+        .toast.show { display: block; animation: fadeInOut 3s ease; }
+        @keyframes fadeInOut { 0% { opacity:0; transform:translateX(-50%) translateY(10px); } 10% { opacity:1; transform:translateX(-50%) translateY(0); } 80% { opacity:1; } 100% { opacity:0; } }
+
+        /* Footer */
+        .footer { text-align: center; padding: 16px; font-size: 11px; color: var(--muted); }
+
+        @media (max-width: 700px) {
+            .kpi-row { grid-template-columns: repeat(2, 1fr); }
+            .controls { flex-direction: column; }
+            .search { min-width: unset; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="header">
+        <div>
+            <h1>고객 파이프라인 대시보드</h1>
+            <div class="sub">서치라이트AI — 리드 & 고객 현황 (<span id="today"></span> 기준) | 마지막 동기화: <span id="lastSync"></span></div>
+        </div>
+        <div class="header-right">
+            <button class="btn btn-export" onclick="exportData()">JSON 내보내기</button>
+            <button class="btn btn-refresh" onclick="refreshData()">새로고침</button>
+        </div>
+    </div>
+
+    <div class="kpi-row">
+        <div class="kpi"><div class="kpi-label">전체 고객/리드</div><div class="kpi-val" id="kpi-total">0</div></div>
+        <div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:var(--green)"></span>활성 (7일 이내)</div><div class="kpi-val" id="kpi-active">0</div></div>
+        <div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:var(--yellow)"></span>보통 (8~14일)</div><div class="kpi-val" id="kpi-warn">0</div></div>
+        <div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:var(--red)"></span>주의 필요 (14일+)</div><div class="kpi-val" id="kpi-danger">0</div></div>
+    </div>
+
+    <div class="controls">
+        <input class="search" type="text" id="search" placeholder="고객사 검색..." oninput="render()">
+        <select class="filter" id="filterOwner" onchange="render()"><option value="">담당자 전체</option></select>
+        <select class="filter" id="filterStatus" onchange="render()"><option value="">경과 상태 전체</option><option value="green">활성 (7일)</option><option value="yellow">보통 (8~14일)</option><option value="red">주의 (14일+)</option></select>
+        <select class="filter" id="sortBy" onchange="render()">
+            <option value="date_desc">최종 확인일 최신순</option>
+            <option value="date_asc">최종 확인일 오래된순</option>
+            <option value="name_asc">고객사 가나다순</option>
+        </select>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>고객사</th>
+                    <th>현재 상태</th>
+                    <th>담당자</th>
+                    <th>최종 확인일</th>
+                    <th>경과</th>
+                    <th style="width:40px"></th>
+                </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+        </table>
+    </div>
+
+    <div class="footer">데이터는 이 HTML 파일 내에 저장됩니다. 상태/날짜를 클릭하면 직접 수정 가능합니다. 수정 후 Ctrl+S로 파일 저장하세요.</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 📊 DATA — 아래 배열을 수정하여 고객 데이터를 관리합니다
+// 마지막 동기화: 2026-03-18 (Gmail + Slack 병합)
+// ============================================================
+const LAST_SYNC = "2026-03-18";
+
+const DATA = [
+    // === 03-18 활성 ===
+    { name: "LSSC", status: "모두싸인 계약 서명 진행중 — 세금계산서 발행 완료, 플랫폼 데모 안내", owner: "소현", date: "2026-03-18", note: "뷰티/FMCG 미디어커머스사. 파트장/팀장급 10~12개 포지션 대규모 의뢰. 에코마케팅 형태 단일 계약으로 진행 검토중 [Slack]. 계약서+계산서 03-18 발송, 데모 페이지 안내 [Gmail]" },
+    { name: "윗치폼", status: "글로벌BD 계약 완료 — 리스트 작업중 (일정 지연, 3/19 전달 예정)", owner: "소현", date: "2026-03-18", note: "파이어볼트(윗치폼) 강승하 대표. 03-12 미팅 후 계약 확정, 모두싸인+사업자등록증 수령 완료. 리스트 작업 예상보다 지연 → 03-19 전달 안내 [Gmail]" },
+    { name: "바비톡", status: "HoP 인터뷰 진행중 + HoM 추가 의뢰 수신, 계약서 초안 발송", owner: "소현", date: "2026-03-18", note: "HR매니저 이후영, 이세호CC. HoP 리스트로 다수 연결 성공, 인터뷰 진행중. HoM 리스트형 상품 추가 요청 03-18 수신, 동일 조건 계약서 초안 발송 완료 [Gmail] [Slack]" },
+    { name: "멜(bvrly.ai)", status: "ML Engineer 1차 리스트 전달 + 마케팅매니저 커피챗 4명 진행중", owner: "소현", date: "2026-03-18", note: "HR 김지민. 마케팅매니저+MLE 2포지션 동시. 마케팅 커피챗 수락자 4명(진원, 현정 등). MLE는 링크드인 외 개발 커뮤니티에서 소싱 시도 [Gmail]. ML엔지니어 추가 진행, 초회 20%할인→100만원에 진행 [Slack]" },
+    { name: "유니브", status: "계약 서명 완료 — 신규 포지션 서칭 착수, 입금 3/31 예정", owner: "경민", date: "2026-03-18", note: "피플팀 박가은. 작년 재계약(동일 조건). 모두싸인 서명완료+세금계산서 03-18 발행. 이전 신인수 그룹장과 JD 협의 후 진행 방식. 결제일 3/31 [Gmail]" },
+
+    // === 03-17 활성 ===
+    { name: "스팬딧", status: "계약 서명 완료 — AE 포지션 56명 리스트 전달 완료(3그룹 분류)", owner: "경민", date: "2026-03-17", note: "대표 송동윤, 경영지원 이진아. 확장형 계약 모두싸인 서명완료. 세금계산서 03-17 발행. AE 56명: 1그룹(B2B SaaS세일즈)+2그룹(B2B세일즈)+3그룹(기타) [Gmail]" },
+    { name: "엘리펀트컴퍼니", status: "그로스 리드 20명 1차 공유(3/17) + 콘마 커피챗 10명 완료 + ML엔지니어/마케팅매니저 병행", owner: "은수", date: "2026-03-17", note: "예지님 담당. 커피챗 대상자 10명(이희진 등) 정보 공유 완료. 그로스 리드(마케팅+개발/PO/DA 경험) 난이도 높음. 콘마(시니어,주니어) 2/13 본리스트, ML엔지니어+마케팅매니저 3/10 추가 [Gmail] [Slack]" },
+    { name: "와디즈", status: "광고서비스PO 커피챗 후보자 확정 + 입금 3/31 예정, 14명 중 3명만 1촌", owner: "소현", date: "2026-03-17", note: "박나래 담당. PO 포지션 나수민 지원 결정. 계약 완료 입금 3/31 예정. 3개 포지션 동시 진행(PO+글로벌마케팅+사내변호사). 광고 도메인 경험자 위주 컨택 희망 [Gmail] [Slack]" },
+    { name: "마크비전", status: "CFO 서명 완료 — 커피챗 14명 업데이트 금주 정리, 세금계산서 재발행 논의", owner: "경민", date: "2026-03-17", note: "Josh Kim TA 담당, Lef Cheon CC. CFO 서명 지난주 금 완료. 커피챗 14명 업데이트 금요일까지 전달 예정. PD 포지션 2/11 1차 진행. 마크비전 PD 팔로업 Josh 미회신 대기중 [Gmail] [Slack]" },
+    { name: "토스", status: "보험총무 포지션 샘플 리스트 전달 — 피드백 대기", owner: "경민", date: "2026-03-17", note: "민지님 담당. 링크드인에서 적합 인재 부족→사람인에서 소싱. 2그룹 구분(현직 보험총무 / 유사 경력) [Gmail]" },
+
+    // === 03-16 활성 ===
+    { name: "인포시즈", status: "Solution Engineer 2차 리스트 65명 전달 — 1차 10명 중 5명 선별 완료", owner: "승모", date: "2026-03-16", note: "서윤영 실장, 김보라/탁정수 CC. 1순위:AI경험, 2순위:유사업종, 3순위:기술이해. 주말 활용 빠르게 제작. 0순위 5명 포함 총 65명 [Gmail]" },
+    { name: "스페이스플래닝", status: "온라인MD 커피챗 진행중 — 김신종 노쇼 발생, 임지희 내일 답변 예정", owner: "경민", date: "2026-03-16", note: "윤성욱 담당. 커피챗 수락자 전달(김신종, 임지희 등). 김신종 노쇼 발생→추가 일정 조율 요청. 나머지 무응답/거절 상태 [Gmail]" },
+    { name: "CJon", status: "3개월 공백 후 협업 방향성 팔로업 — 회신 대기중", owner: "경민", date: "2026-03-16", note: "김태현 TA&M팀. 연초 수수료율 합의(주니어15%/시니어20%/임원25%) 후 인사평가 기간으로 중단. AX/AD 포지션 후불제 검토, 계약 날인 전 [Gmail] [Slack]" },
+
+    // === 03-13~03-10 ===
+    { name: "IVG", status: "샘플 리스트 이벤트 미팅 완료 — 후속 계약 제안 필요", owner: "소현", date: "2026-03-13", note: "강석준 대표. LinkedIn 인재 샘플 이벤트 참여. 미팅 시간 14시→완료. 은수/경민 CC [Gmail]" },
+    { name: "엔씨소프트", status: "사업PM 샘플 리스트 전달 2주 경과 — 눈높이 맞춤/사용성 피드백 요청", owner: "경민", date: "2026-03-12", note: "정우진 담당, 홍석란/신승훈 CC. 첫 협업이라 인재 눈높이 확인 필요. 플랫폼 사용성 피드백도 함께 요청 [Gmail]" },
+    { name: "바이오디자인랩", status: "Director(CBO) BD 리스트 전달 — 직접 컨택 방식(LinkedIn DM/인메일) 안내", owner: "경민", date: "2026-03-12", note: "정하원 부사장. JD 부합 인재 리스트업 완료. 이직의사/회사이해 미확인 상태의 롱리스트. 리크루트 라이트 활용 시 1촌 무관 인메일 가능 안내 [Gmail]" },
+    { name: "CTK", status: "ODM Sales 본부장 — JD 수령 완료, 미팅 일정 조율중", owner: "예란", date: "2026-03-10", note: "홍제완 이사. LinkedIn 인재 샘플 이벤트 참여. JD 첨부파일 수신 완료, 미팅 가능일(3/11,13,16) 회신 [Gmail]" },
+    { name: "강남언니", status: "신규 포지션 4개 의뢰 미팅 완료 — 1차/2차 진행중, 6개월 구독 연장(~6/30)", owner: "소현", date: "2026-03-09", note: "힐링페이퍼(강남언니). AI Native 조직 구축 중. 플랫폼AM+재무팀리드+일본메디컬AM+재무기획. 기존 13건 계약 중 6건 소진. 6개월 구독 연장 계약 변경 합의(수수료 조건 변경). 리크루터 송지우 담당 [Gmail] [Slack]" },
+
+    // === 03월 초 (신규 발견) ===
+    { name: "뉴타입 인더스트리즈", status: "안드로이드 커피챗 확정 8명(3/3) + BE 2차 리마인드 발송 — RPO 사례 블로그 작성중", owner: "경민", date: "2026-03-03", note: "안드로이드(경민→은수 계정)+BE(승모 계정) 2포지션 동시 진행. BE 77명 리스트 2/12 납품 완료. 안드로이드 1차 컨택 2/15, 2차 리마인드 2/23. PM 회신율 67%(15명 중 10명) 업계 극단적 성과. 세금계산서 발행완료. RPO 채용대행 사례 블로그 초안 2/27 작성(예란) [Gmail] [Slack]" },
+
+    // === 02월 ===
+    { name: "플레이스앤", status: "SaaS 세일즈 매니저 리스트 전달(3그룹) — 피드백 리마인드 발송(2/27)", owner: "경민", date: "2026-02-27", note: "야놀자→네이버 매각 후 채용 가속. 현재 50인→상반기 90명 증원 목표(영업직 25명). 정식HR 없이 기획담당자가 채용 겸임. 리스트 2/13 납품, 연휴 후 2/19 업무복귀 시 확인 가능하도록 전달. 세일즈 컨택 스레드 2/27 [Gmail] [Slack]" },
+    { name: "디캠프", status: "입주사 변경약정서 서명 완료(02-26) — 월 이용료 정기 납부중, 홍보 채널 활용중", owner: "소현", date: "2026-02-26", note: "마포 입주사. 변경약정서 모두싸인 서명완료 02-26. 디지털 사이니지 홍보 콘텐츠 기회(02-23). 월 이용료 정기 청구 [Gmail]. 패밀리사/배치사 서비스 제안 건 별도" },
+    { name: "그로스핏", status: "일본 HR스타트업 협업 미팅 완료(2/23) — 후속 논의 대기", owner: "경민", date: "2026-02-23", note: "growthpit.jp. 일본 HR 스타트업. 협업 제안 미팅 2/23 진행 완료. 후속 협업 방향 논의 예정 [Gmail]" },
+    { name: "리오랩", status: "PO 리스트 피드백 수령 — 제품 bar 높이기 필요", owner: "소현", date: "2026-02-12", note: "허대표 눈높이 맞추기 어려움. 솔루션 bar 높이는 계기로 삼기" },
+    { name: "밸러링비즈", status: "BD 본리스트+해외BD 53명+파운딩엔지니어 48명 전달 완료 — 입금 관리 필요", owner: "은수", date: "2026-02-10", note: "그릿BD(grit-bd.com) 경유. 박람회에서 만남→2개 포지션 계약. 파운딩엔지니어 48명(2/2)+해외BD 53명(2/11) 리스트 전달. 입금관리 필요 고객사로 분류(2/4). JD 수령 후 소현님 발송 담당 [Gmail] [Slack]" },
+    { name: "뉴로퓨전", status: "2차 PM 리스트 — 커피챗 제안 회신없어 사실상 종료", owner: "소현", date: "2026-02-10", note: "최동규 PM팀장에게 연락. 본인 접근 아니라고 함" },
+    { name: "뉴앤디", status: "계약 완료 — 시니어PM 리스트 전달 완료(02-04), 피드백 대기", owner: "경민", date: "2026-02-04", note: "송명기 대표. 모두싸인 서명완료 01-29, 세금계산서 01-30 발행. PM 리스트(5~10년차 이커머스/풀필먼트) 02-04 전달. tl;dv 미팅 녹화 사용 [Gmail]" },
+    { name: "이이키", status: "컨설팅 미팅 완료 — 아직 고객 전환 단계 아님", owner: "승모", date: "2026-02-02", note: "건기식 브랜드. 정직원 아닌 파트너/프리랜서 추천" },
+
+    // === 01월 ===
+    { name: "베슬AI", status: "4건 계약 진행중(DS/시니어BE/테크리크루터/미정) — AS 추가 30명 소싱 요청(3/9)", owner: "경민", date: "2026-03-09", note: "베슬에이아이코리아. 모두싸인 확장형 계약 서명 01-26. 총 4건 계약(10%할인). DS 1차 20명 전달(1/27). 시니어BE 본리스트 샘플 검토중, 테크리크루터 서칭방향 전달 전. BE 납품 후 많이 망가짐(고객사 제외+미회신/더블크리티컬)→AS 차원 Luffy 통해 30명 추가 소싱 요청(3/9) [Gmail] [Slack]" },
+    { name: "핀다", status: "후불제 서비스 소개서 발송(01-23) — 기존 선불 부담 해소 제안, 회신 대기", owner: "소현", date: "2026-01-23", note: "이혜민 매니저. 작년 7월 선불 부담으로 이탈. 후불제 상품 오픈에 따라 재접근, 서비스 소개서+후불제 안내 메일 발송 01-23 [Gmail]" },
+    { name: "오호라/글루가", status: "에코마케팅 인재매핑 리스트 납품 완료(세금계산서 01-20) — 컨택 위임 여부 고민중", owner: "소현", date: "2026-01-21", note: "글루가 세금계산서 01-20 발행. 정세필 디렉터 & 송지현 팀장 인사평가 기간. CEO/글로벌디렉터 선 검토 중 [Gmail]" },
+    { name: "부킹", status: "12번째 포지션 진행 — 사업전략 JD 준비중", owner: "소현", date: "2026-01-21", note: "11번째 라스트마일 운영기획(쿠팡이츠타깃) 유사 포지션" },
+    { name: "캐치테이블", status: "BA 샘플 리스트 피드백 긍정적 — 10명 중 4명 기접촉, 6명 직접 컨택 진행", owner: "경민", date: "2026-01-14", note: "신유림 담당, 이동진 CC. 샘플 리스트 01-13 전달. 10명 중 4명 기접촉/진행중, 나머지 적합 판단→직접 컨택 후 전환율 확인 예정. 내부 검토 후 연락 [Gmail]" },
+    { name: "어댑트", status: "후불제 제안 — 리멤버 통한 커피챗 연결 요청, 무응답", owner: "경민", date: "2026-01-08", note: "건기식/빨간물. HM이 채용 원하는 후보자 있으나 회신 없음. 관심 미지수" },
+];
+
+// ============================================================
+
+const TODAY = new Date();
+document.getElementById('today').textContent = fmt(TODAY);
+document.getElementById('lastSync').textContent = LAST_SYNC;
+
+function fmt(d) { const dd = new Date(d); return `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`; }
+function daysBetween(d) { return Math.floor((TODAY - new Date(d)) / 86400000); }
+function statusColor(days) { return days <= 7 ? 'green' : days <= 14 ? 'yellow' : 'red'; }
+
+function populateFilters() {
+    const owners = [...new Set(DATA.map(d => d.owner))].sort();
+    const sel = document.getElementById('filterOwner');
+    sel.innerHTML = '<option value="">담당자 전체</option>';
+    owners.forEach(o => { const op = document.createElement('option'); op.value = o; op.textContent = o; sel.appendChild(op); });
+}
+
+function render() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const ownerF = document.getElementById('filterOwner').value;
+    const statusF = document.getElementById('filterStatus').value;
+    const sortBy = document.getElementById('sortBy').value;
+
+    let filtered = DATA.filter(d => {
+        if (q && !d.name.toLowerCase().includes(q) && !d.status.toLowerCase().includes(q) && !d.note.toLowerCase().includes(q)) return false;
+        if (ownerF && d.owner !== ownerF) return false;
+        if (statusF && statusColor(daysBetween(d.date)) !== statusF) return false;
+        return true;
+    });
+
+    filtered.sort((a, b) => {
+        switch(sortBy) {
+            case 'date_desc': return new Date(b.date) - new Date(a.date);
+            case 'date_asc': return new Date(a.date) - new Date(b.date);
+            case 'name_asc': return a.name.localeCompare(b.name, 'ko');
+        }
+    });
+
+    // KPI (always from full DATA)
+    let total = DATA.length, active = 0, warn = 0, danger = 0;
+    DATA.forEach(d => {
+        const days = daysBetween(d.date);
+        if (days <= 7) active++;
+        else if (days <= 14) warn++;
+        else danger++;
+    });
+    document.getElementById('kpi-total').textContent = total;
+    document.getElementById('kpi-active').textContent = active;
+    document.getElementById('kpi-warn').textContent = warn;
+    document.getElementById('kpi-danger').textContent = danger;
+
+    // Table
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+    filtered.forEach((d, idx) => {
+        const days = daysBetween(d.date);
+        const color = statusColor(days);
+        const realIdx = DATA.indexOf(d);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${esc(d.name)}</strong>${d.note ? '<br><span style="font-size:11px;color:#9ca3af">'+esc(d.note)+'</span>' : ''}</td>
+            <td contenteditable="true" data-idx="${realIdx}" data-field="status" onblur="onEdit(this)">${esc(d.status)}</td>
+            <td>${esc(d.owner)}</td>
+            <td contenteditable="true" data-idx="${realIdx}" data-field="date" onblur="onEdit(this)" style="white-space:nowrap">${d.date}</td>
+            <td><span class="badge badge-${color} days">${days}일</span></td>
+            <td><button onclick="removeClient(${realIdx})" style="border:none;background:none;cursor:pointer;color:#ccc;font-size:16px" title="삭제">&times;</button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#9ca3af">검색 결과가 없습니다</td></tr>';
+    }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function onEdit(el) {
+    const idx = parseInt(el.dataset.idx);
+    const field = el.dataset.field;
+    const val = el.textContent.trim();
+    if (field === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        el.textContent = DATA[idx].date;
+        return;
+    }
+    DATA[idx][field] = val;
+    render();
+}
+
+function removeClient(idx) {
+    if (!confirm(DATA[idx].name + ' — 삭제하시겠습니까?')) return;
+    DATA.splice(idx, 1);
+    populateFilters();
+    render();
+}
+
+function exportData() {
+    const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `pipeline-${fmt(TODAY)}.json`;
+    a.click();
+}
+
+function refreshData() {
+    // 마지막 동기화 날짜 기준으로 이후 데이터만 가져오는 프롬프트 생성
+    const latestDate = DATA.reduce((max, d) => d.date > max ? d.date : max, '2000-01-01');
+    const prompt = `고객 파이프라인 대시보드를 새로고침해줘.
+
+파일 경로: projects/고객-파이프라인-대시보드/pipeline-dashboard.html
+
+마지막 동기화 날짜: ${latestDate}
+이 날짜 이후의 Gmail과 Slack 데이터만 검색해서 DATA 배열을 업데이트해줘.
+
+검색 전략 (중요 — 누락 방지):
+1. Gmail 전체 스캔: "from:biz@searchright.net OR to:biz@searchright.net after:${latestDate.replace(/-/g,'/')}" maxResults:100, nextPageToken으로 페이지네이션 완료
+2. Gmail 보조 스캔: "from:smyang@searchright.net OR to:smyang@searchright.net after:${latestDate.replace(/-/g,'/')}" maxResults:100
+3. Slack 회사별 검색: 기존 고객사 이름으로 개별 검색 (AND 로직 주의 — 회사명 단독 검색)
+4. Slack 채널 스캔: #biz-general, #biz-list-contact after:${latestDate}
+5. 기존 고객의 상태/날짜 업데이트 + 신규 고객 추가
+6. LAST_SYNC 날짜도 오늘로 갱신
+
+주의사항:
+- Gmail 검색 시 반드시 nextPageToken 따라가며 전체 결과 수집
+- Slack 검색 시 회사명만 단독으로 검색 (복합 키워드 AND 조합 금지)
+- 새 회사 발견 시 개별 Gmail/Slack 검색으로 상세 정보 수집`;
+
+    navigator.clipboard.writeText(prompt).then(() => {
+        showToast('Claude Code에 붙여넣기할 새로고침 프롬프트가 복사되었습니다.');
+    }).catch(() => {
+        // clipboard API 실패 시 prompt 표시
+        const ta = document.createElement('textarea');
+        ta.value = prompt;
+        ta.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:200px;z-index:999;font-size:12px;padding:12px;';
+        document.body.appendChild(ta);
+        ta.select();
+        showToast('위 텍스트를 복사한 후 Claude Code에 붙여넣기하세요. 클릭하면 닫힙니다.');
+        ta.addEventListener('click', () => ta.remove());
+    });
+}
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.remove('show');
+    void t.offsetWidth; // reflow
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// Init
+populateFilters();
+render();
+</script>
+</body>
+</html>

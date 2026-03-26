@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서치라이트AI — 고객 파이프라인</title>
+    <style>
+        :root {
+            --bg: #f4f5f7;
+            --card: #ffffff;
+            --header: #1a1a2e;
+            --text: #212529;
+            --muted: #6c757d;
+            --green: #22c55e;
+            --yellow: #eab308;
+            --red: #ef4444;
+            --blue: #3b82f6;
+            --gap: 14px;
+            --radius: 8px;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .wrap { max-width: 1200px; margin: 0 auto; padding: var(--gap); }
+
+        /* Header */
+        .header { background: var(--header); color: #fff; padding: 18px 24px; border-radius: var(--radius); margin-bottom: var(--gap); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+        .header h1 { font-size: 18px; font-weight: 600; }
+        .header .sub { font-size: 12px; color: rgba(255,255,255,.55); }
+        .header-right { display: flex; gap: 8px; align-items: center; }
+        .btn { padding: 6px 14px; border-radius: 6px; border: none; font-size: 13px; cursor: pointer; font-weight: 500; }
+        .btn-refresh { background: var(--green); color: #fff; }
+        .btn-refresh.loading { background: var(--muted); pointer-events: none; }
+        .btn-export { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.2); }
+        .btn:hover { opacity: .85; }
+
+        /* KPI */
+        .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--gap); margin-bottom: var(--gap); }
+        .kpi { background: var(--card); border-radius: var(--radius); padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+        .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 2px; }
+        .kpi-val { font-size: 26px; font-weight: 700; }
+        .kpi-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+
+        /* Controls */
+        .controls { display: flex; gap: 10px; margin-bottom: var(--gap); flex-wrap: wrap; align-items: center; }
+        .search { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+        .search:focus { outline: none; border-color: var(--blue); }
+        select.filter { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; background: #fff; }
+
+        /* Table */
+        .table-wrap { background: var(--card); border-radius: var(--radius); box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead th { text-align: left; padding: 10px 14px; border-bottom: 2px solid #e5e7eb; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; cursor: pointer; user-select: none; white-space: nowrap; }
+        thead th:hover { color: var(--text); background: #f9fafb; }
+        tbody td { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; }
+        tbody tr:hover { background: #f8fafc; }
+        tbody tr:last-child td { border-bottom: none; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+        .badge-green { background: #dcfce7; color: #166534; }
+        .badge-yellow { background: #fef9c3; color: #854d0e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-gray { background: #f3f4f6; color: #4b5563; }
+        .days { font-weight: 600; font-size: 12px; }
+
+        /* Editable */
+        td[contenteditable="true"] { cursor: text; }
+        td[contenteditable="true"]:focus { outline: 2px solid var(--blue); outline-offset: -2px; border-radius: 3px; background: #eff6ff; }
+
+        /* Toast */
+        .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1a1a2e; color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 13px; z-index: 200; display: none; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+        .toast.show { display: block; animation: fadeInOut 3s ease; }
+        .toast.persist { display: block; animation: none; opacity: 1; }
+        @keyframes fadeInOut { 0% { opacity:0; transform:translateX(-50%) translateY(10px); } 10% { opacity:1; transform:translateX(-50%) translateY(0); } 80% { opacity:1; } 100% { opacity:0; } }
+
+        /* Footer */
+        .footer { text-align: center; padding: 16px; font-size: 11px; color: var(--muted); }
+
+        @media (max-width: 700px) {
+            .kpi-row { grid-template-columns: repeat(3, 1fr); }
+            .controls { flex-direction: column; }
+            .search { min-width: unset; }
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="header">
+        <div>
+            <h1>고객 파이프라인 대시보드</h1>
+            <div class="sub">서치라이트AI — 리드 & 고객 현황 (<span id="today"></span> 기준) | 마지막 동기화: <span id="lastSync">-</span></div>
+        </div>
+        <div class="header-right">
+            <button class="btn btn-export" onclick="exportData()">JSON 내보내기</button>
+            <button class="btn btn-refresh" id="btnRefresh" onclick="refreshData()">새로고침</button>
+        </div>
+    </div>
+
+    <div class="kpi-row">
+        <div class="kpi"><div class="kpi-label">전체</div><div class="kpi-val" id="kpi-total">0</div></div>
+        <div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:var(--blue)"></span>고객 (계약)</div><div class="kpi-val" id="kpi-customer">0</div></div>
+        <div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:var(--muted)"></span>리드</div><div class="kpi-val" id="kpi-lead">0</div></div>
+        <div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:var(--green)"></span>활성 (7일)</div><div class="kpi-val" id="kpi-active">0</div></div>
+        <div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:var(--yellow)"></span>보통 (8~14일)</div><div class="kpi-val" id="kpi-warn">0</div></div>
+        <div class="kpi"><div class="kpi-label"><span class="kpi-dot" style="background:var(--red)"></span>주의 (14일+)</div><div class="kpi-val" id="kpi-danger">0</div></div>
+    </div>
+
+    <div class="controls">
+        <input class="search" type="text" id="search" placeholder="고객사 검색..." oninput="render()">
+        <select class="filter" id="filterOwner" onchange="render()"><option value="">담당자 전체</option></select>
+        <select class="filter" id="filterType" onchange="render()"><option value="">고객/리드 전체</option><option value="고객">고객 (계약)</option><option value="리드">리드</option></select>
+        <select class="filter" id="filterStatus" onchange="render()"><option value="">경과 상태 전체</option><option value="green">활성 (7일)</option><option value="yellow">보통 (8~14일)</option><option value="red">주의 (14일+)</option></select>
+        <select class="filter" id="sortBy" onchange="render()">
+            <option value="date_desc">최종 확인일 최신순</option>
+            <option value="date_asc">최종 확인일 오래된순</option>
+            <option value="name_asc">고객사 가나다순</option>
+        </select>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>고객사</th>
+                    <th>현재 상태</th>
+                    <th>담당자</th>
+                    <th>최종 확인일</th>
+                    <th>경과</th>
+                    <th style="width:40px"></th>
+                </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+        </table>
+    </div>
+
+    <div class="footer">서버에서 데이터를 관리합니다. 상태/날짜를 클릭하면 직접 수정 가능합니다. 수정 사항은 자동 저장됩니다.</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+let DATA = [];
+let LAST_SYNC = "-";
+const TODAY = new Date();
+
+document.getElementById('today').textContent = fmt(TODAY);
+
+// ============================================================
+// 초기 데이터 로드
+// ============================================================
+async function loadData() {
+    try {
+        const res = await fetch('/api/data');
+        const json = await res.json();
+        DATA = json.data || [];
+        LAST_SYNC = json.lastSync || "-";
+        document.getElementById('lastSync').textContent = LAST_SYNC;
+        populateFilters();
+        render();
+    } catch (e) {
+        showToast('데이터 로드 실패: ' + e.message);
+    }
+}
+
+// ============================================================
+// 새로고침 — 서버를 통해 Claude CLI 호출
+// ============================================================
+async function refreshData() {
+    const btn = document.getElementById('btnRefresh');
+    btn.textContent = '동기화 중...';
+    btn.classList.add('loading');
+    showToastPersist('Gmail/Slack 데이터를 가져오는 중... (최대 5분 소요)');
+
+    try {
+        const res = await fetch('/api/refresh', { method: 'POST' });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            // SSE 파싱
+            const lines = buffer.split('\n');
+            buffer = lines.pop(); // 마지막 불완전 라인 보존
+
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const evt = JSON.parse(line.slice(6));
+                        showToastPersist(evt.message);
+                    } catch {}
+                }
+            }
+        }
+
+        // 완료 후 데이터 다시 로드
+        await loadData();
+        showToast('동기화 완료!');
+    } catch (e) {
+        showToast('새로고침 실패: ' + e.message);
+    } finally {
+        btn.textContent = '새로고침';
+        btn.classList.remove('loading');
+    }
+}
+
+// ============================================================
+// 수정 사항 서버에 저장
+// ============================================================
+async function saveToServer() {
+    try {
+        await fetch('/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lastSync: LAST_SYNC, data: DATA }),
+        });
+    } catch (e) {
+        console.error('저장 실패:', e);
+    }
+}
+
+// ============================================================
+// 유틸리티
+// ============================================================
+function fmt(d) { const dd = new Date(d); return `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`; }
+function daysBetween(d) { return Math.floor((TODAY - new Date(d)) / 86400000); }
+function statusColor(days) { return days <= 7 ? 'green' : days <= 14 ? 'yellow' : 'red'; }
+
+function populateFilters() {
+    const owners = [...new Set(DATA.map(d => d.owner))].sort();
+    const sel = document.getElementById('filterOwner');
+    sel.innerHTML = '<option value="">담당자 전체</option>';
+    owners.forEach(o => { const op = document.createElement('option'); op.value = o; op.textContent = o; sel.appendChild(op); });
+}
+
+function render() {
+    const q = document.getElementById('search').value.toLowerCase();
+    const ownerF = document.getElementById('filterOwner').value;
+    const typeF = document.getElementById('filterType').value;
+    const statusF = document.getElementById('filterStatus').value;
+    const sortBy = document.getElementById('sortBy').value;
+
+    let filtered = DATA.filter(d => {
+        if (q && !d.name.toLowerCase().includes(q) && !d.status.toLowerCase().includes(q) && !(d.note || '').toLowerCase().includes(q)) return false;
+        if (ownerF && d.owner !== ownerF) return false;
+        if (typeF && (d.type || '리드') !== typeF) return false;
+        if (statusF && statusColor(daysBetween(d.date)) !== statusF) return false;
+        return true;
+    });
+
+    filtered.sort((a, b) => {
+        switch(sortBy) {
+            case 'date_desc': return new Date(b.date) - new Date(a.date);
+            case 'date_asc': return new Date(a.date) - new Date(b.date);
+            case 'name_asc': return a.name.localeCompare(b.name, 'ko');
+        }
+    });
+
+    // KPI (always from full DATA)
+    let total = DATA.length, active = 0, warn = 0, danger = 0, customerCnt = 0, leadCnt = 0;
+    DATA.forEach(d => {
+        const days = daysBetween(d.date);
+        if (days <= 7) active++;
+        else if (days <= 14) warn++;
+        else danger++;
+        if ((d.type || '리드') === '고객') customerCnt++;
+        else leadCnt++;
+    });
+    document.getElementById('kpi-total').textContent = total;
+    document.getElementById('kpi-customer').textContent = customerCnt;
+    document.getElementById('kpi-lead').textContent = leadCnt;
+    document.getElementById('kpi-active').textContent = active;
+    document.getElementById('kpi-warn').textContent = warn;
+    document.getElementById('kpi-danger').textContent = danger;
+
+    // Table
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+    filtered.forEach((d, idx) => {
+        const days = daysBetween(d.date);
+        const color = statusColor(days);
+        const realIdx = DATA.indexOf(d);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><strong>${esc(d.name)}</strong> <span class="badge ${(d.type||'리드')==='고객'?'badge-blue':'badge-gray'}">${d.type||'리드'}</span>${d.note ? '<br><span style="font-size:11px;color:#9ca3af">'+esc(d.note)+'</span>' : ''}</td>
+            <td contenteditable="true" data-idx="${realIdx}" data-field="status" onblur="onEdit(this)">${esc(d.status)}</td>
+            <td>${esc(d.owner)}</td>
+            <td contenteditable="true" data-idx="${realIdx}" data-field="date" onblur="onEdit(this)" style="white-space:nowrap">${d.date}</td>
+            <td><span class="badge badge-${color} days">${days}일</span></td>
+            <td><button onclick="removeClient(${realIdx})" style="border:none;background:none;cursor:pointer;color:#ccc;font-size:16px" title="삭제">&times;</button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#9ca3af">검색 결과가 없습니다</td></tr>';
+    }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function onEdit(el) {
+    const idx = parseInt(el.dataset.idx);
+    const field = el.dataset.field;
+    const val = el.textContent.trim();
+    if (field === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        el.textContent = DATA[idx].date;
+        return;
+    }
+    DATA[idx][field] = val;
+    render();
+    saveToServer(); // 수정 즉시 서버에 저장
+}
+
+function removeClient(idx) {
+    if (!confirm(DATA[idx].name + ' — 삭제하시겠습니까?')) return;
+    DATA.splice(idx, 1);
+    populateFilters();
+    render();
+    saveToServer();
+}
+
+function exportData() {
+    const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `pipeline-${fmt(TODAY)}.json`;
+    a.click();
+}
+
+function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.remove('show', 'persist');
+    void t.offsetWidth;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function showToastPersist(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.remove('show');
+    t.classList.add('persist');
+}
+
+// Init
+loadData();
+</script>
+</body>
+</html>
