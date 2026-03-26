@@ -1,0 +1,40 @@
+name: Pipeline Data Sync
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install google-auth google-api-python-client anthropic requests
+
+      - name: Run sync
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          GMAIL_IMPERSONATE: smyang@searchright.net
+          SLACK_USER_TOKEN: ${{ secrets.SLACK_USER_TOKEN }}
+        run: python scripts/sync.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "pipeline-bot"
+          git config user.email "bot@searchright.net"
+          if git diff --quiet data.json; then
+            echo "No changes to data.json"
+          else
+            git add data.json
+            git commit -m "chore: 파이프라인 데이터 동기화 ($(date +%Y-%m-%d))"
+            git push
+          fi

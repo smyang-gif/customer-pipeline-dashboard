@@ -91,6 +91,7 @@
         </div>
         <div class="header-right">
             <button class="btn btn-export" onclick="exportData()">JSON 내보내기</button>
+            <button class="btn btn-refresh" id="btnRefresh" onclick="refreshData()">데이터 동기화</button>
         </div>
     </div>
 
@@ -161,8 +162,29 @@ async function loadData() {
 }
 
 // ============================================================
-// 유틸리티
+// 데이터 동기화 — Vercel Serverless → GitHub Actions
 // ============================================================
+async function refreshData() {
+    const btn = document.getElementById('btnRefresh');
+    btn.textContent = '동기화 요청 중...';
+    btn.classList.add('loading');
+
+    try {
+        const res = await fetch('/api/refresh', { method: 'POST' });
+        const json = await res.json();
+        if (json.ok) {
+            showToast(json.message);
+            setTimeout(() => { location.reload(); }, 120000);
+        } else {
+            showToast('동기화 실패: ' + (json.error || '알 수 없는 오류'));
+        }
+    } catch (e) {
+        showToast('동기화 요청 실패: ' + e.message);
+    } finally {
+        btn.textContent = '데이터 동기화';
+        btn.classList.remove('loading');
+    }
+}
 
 // ============================================================
 // 유틸리티
