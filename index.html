@@ -91,7 +91,6 @@
         </div>
         <div class="header-right">
             <button class="btn btn-export" onclick="exportData()">JSON 내보내기</button>
-            <button class="btn btn-refresh" id="btnRefresh" onclick="refreshData()">새로고침</button>
         </div>
     </div>
 
@@ -125,14 +124,13 @@
                     <th>담당자</th>
                     <th>최종 확인일</th>
                     <th>경과</th>
-                    <th style="width:40px"></th>
                 </tr>
             </thead>
             <tbody id="tbody"></tbody>
         </table>
     </div>
 
-    <div class="footer">서버에서 데이터를 관리합니다. 상태/날짜를 클릭하면 직접 수정 가능합니다. 수정 사항은 자동 저장됩니다.</div>
+    <div class="footer">데이터는 정기적으로 업데이트됩니다.</div>
 </div>
 
 <!-- Toast -->
@@ -150,7 +148,7 @@ document.getElementById('today').textContent = fmt(TODAY);
 // ============================================================
 async function loadData() {
     try {
-        const res = await fetch('/api/data');
+        const res = await fetch('data.json');
         const json = await res.json();
         DATA = json.data || [];
         LAST_SYNC = json.lastSync || "-";
@@ -163,64 +161,8 @@ async function loadData() {
 }
 
 // ============================================================
-// 새로고침 — 서버를 통해 Claude CLI 호출
+// 유틸리티
 // ============================================================
-async function refreshData() {
-    const btn = document.getElementById('btnRefresh');
-    btn.textContent = '동기화 중...';
-    btn.classList.add('loading');
-    showToastPersist('Gmail/Slack 데이터를 가져오는 중... (최대 5분 소요)');
-
-    try {
-        const res = await fetch('/api/refresh', { method: 'POST' });
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-
-            // SSE 파싱
-            const lines = buffer.split('\n');
-            buffer = lines.pop(); // 마지막 불완전 라인 보존
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const evt = JSON.parse(line.slice(6));
-                        showToastPersist(evt.message);
-                    } catch {}
-                }
-            }
-        }
-
-        // 완료 후 데이터 다시 로드
-        await loadData();
-        showToast('동기화 완료!');
-    } catch (e) {
-        showToast('새로고침 실패: ' + e.message);
-    } finally {
-        btn.textContent = '새로고침';
-        btn.classList.remove('loading');
-    }
-}
-
-// ============================================================
-// 수정 사항 서버에 저장
-// ============================================================
-async function saveToServer() {
-    try {
-        await fetch('/api/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lastSync: LAST_SYNC, data: DATA }),
-        });
-    } catch (e) {
-        console.error('저장 실패:', e);
-    }
-}
 
 // ============================================================
 // 유틸리티
@@ -286,42 +228,20 @@ function render() {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td><strong>${esc(d.name)}</strong> <span class="badge ${(d.type||'리드')==='고객'?'badge-blue':'badge-gray'}">${d.type||'리드'}</span>${d.note ? '<br><span style="font-size:11px;color:#9ca3af">'+esc(d.note)+'</span>' : ''}</td>
-            <td contenteditable="true" data-idx="${realIdx}" data-field="status" onblur="onEdit(this)">${esc(d.status)}</td>
+            <td>${esc(d.status)}</td>
             <td>${esc(d.owner)}</td>
-            <td contenteditable="true" data-idx="${realIdx}" data-field="date" onblur="onEdit(this)" style="white-space:nowrap">${d.date}</td>
+            <td style="white-space:nowrap">${d.date}</td>
             <td><span class="badge badge-${color} days">${days}일</span></td>
-            <td><button onclick="removeClient(${realIdx})" style="border:none;background:none;cursor:pointer;color:#ccc;font-size:16px" title="삭제">&times;</button></td>
         `;
         tbody.appendChild(tr);
     });
 
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#9ca3af">검색 결과가 없습니다</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#9ca3af">검색 결과가 없습니다</td></tr>';
     }
 }
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-function onEdit(el) {
-    const idx = parseInt(el.dataset.idx);
-    const field = el.dataset.field;
-    const val = el.textContent.trim();
-    if (field === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-        el.textContent = DATA[idx].date;
-        return;
-    }
-    DATA[idx][field] = val;
-    render();
-    saveToServer(); // 수정 즉시 서버에 저장
-}
-
-function removeClient(idx) {
-    if (!confirm(DATA[idx].name + ' — 삭제하시겠습니까?')) return;
-    DATA.splice(idx, 1);
-    populateFilters();
-    render();
-    saveToServer();
-}
 
 function exportData() {
     const blob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
